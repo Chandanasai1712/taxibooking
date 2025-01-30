@@ -6,16 +6,13 @@ phases:
       - echo "Updating Amazon Linux and installing dependencies..."
       - dnf update -y
       - echo "Installing Java and Maven..."
-      - dnf install -y java-17-amazon-corretto maven
-      # - yum update -y
-      # - amazon-linux-extras enable corretto17
-      # - yum install -y java-17-amazon-corretto maven
-      - echo "Java version:"
+      - dnf install -y java-17-amazon-corretto maven
+      - echo Java version:""
       - java -version
-      - echo "Maven version:"
+      - echo Maven version:""
       - mvn -version
       - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 &
-      - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
+      - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
 
   pre_build:
     commands:
