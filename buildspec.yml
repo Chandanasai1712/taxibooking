@@ -36,8 +36,8 @@ phases:
   build:
     commands:
       - echo Build started on date
-      - echo Running Maven compile
-      - mvn clean compile
+      #- echo Running Maven compile
+     # - mvn clean compile
       - echo Running Maven build...
       - mvn clean package -DskipTests
       - echo "Building Docker image..."
