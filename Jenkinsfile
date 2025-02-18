@@ -1,97 +1,98 @@
-def registry = 'https://taxio.jfrog.io/'
-def imageName = 'taxio.jfrog.io/docker-taxi-docker/taxiapp'
-def version   = '1.0.1'
 pipeline {
-    agent {
-        node {
-            label 'maven'
-        }
+
+    agent { node { label 'slave' } }
+
+    tools { terraform 'terraform' }
+    
+    environment {
+        WORKDIR = 'eks-infra-using-pipeline'
+        BUCKET_NAME = 'application-eks-terraform'
     }
-environment {
-    PATH = "/opt/apache-maven-3.9.6/bin:$PATH"
-   // SONAR_TOKEN = credentials('SONAR_TOKEN')
-}
-   stages {
-        stage("build"){
+    
+    parameters {
+        choice(name: 'ACTION', choices: ['apply', 'destroy'], description: 'Choose Terraform action to perform')
+    }
+
+    stages {
+        stage('Checkout') {
             steps {
-                 echo "----------- build started ----------"
-                sh 'mvn package'
-                 echo "----------- build completed ----------"
-            }
-        }
-        stage("test"){
-            steps{
-                echo "----------- unit test started ----------"
-                sh 'mvn surefire-report:report'
-                 echo "----------- unit test Completed ----------"
-            }
-        }
-       /* stage('SonarQube Analysis') {
-            steps {
+                echo 'Fetching Infra code from GitHub'
+                git branch: 'main', url: 'https://github.com/saishandilya/taxi-booking-terraform-infra.git'
                 script {
-                    // Run SonarQube analysis
+                    env.GIT_COMMIT = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+                    echo "Current Git Commit ID: ${env.GIT_COMMIT}"
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                echo 'Terraform Initiation...!!!'
+                dir("${WORKDIR}") {
+                    sh 'terraform init'
+                }
+            }
+        }
+
+        stage('Terraform Validate') {
+            steps {
+                echo 'Terraform code Validation...!!!'
+                dir("${WORKDIR}") {
+                    sh 'terraform validate'
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            when {
+                expression { params.ACTION == 'apply' }
+            }
+            steps {
+                echo 'Terraform Planning...!!!'
+                dir("${WORKDIR}") {
+                    script {
+                        env.PLAN_NAME = "eks-infra-plan-" + sh(script: 'date +%Y%m%d-%H%M%S', returnStdout: true).trim() + ".plan"
+                    }
+                    echo "${env.PLAN_NAME}"
+                    withCredentials([file(credentialsId: 'terraform-tfvars', variable: 'TFVARS_FILE')]) {
+                        sh "terraform plan -var-file=\$TFVARS_FILE -out=\"${env.PLAN_NAME}\""
+                        sh "aws s3 cp ${env.PLAN_NAME} s3://${BUCKET_NAME}/terraform-plan/"
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { params.ACTION == 'apply' }
+            }
+            steps {
+                echo 'Terraform Applying Infrastructure Plan...!!!'
+                dir("${WORKDIR}") {
                     sh """
-                    mvn sonar:sonar \
-                    -Dsonar.projectKey=Chandanasai1712_cicd-taxiapp \
-                    -Dsonar.organization=taxiapp \
-                    -Dsonar.host.url=https://sonarcloud.io \
-                    -Dsonar.token=${SONAR_TOKEN}
+                        if [ ! -f "${env.PLAN_NAME}" ]; then
+                            echo "ERROR: Plan file not found: ${env.PLAN_NAME}" >&2
+                            exit 1
+                        fi
+
+                        terraform apply "${env.PLAN_NAME}"
                     """
                 }
             }
         }
-*/
-        stage("Jar Publish") {
-        steps {
-            script {
-                    echo '<--------------- Jar Publish Started --------------->'
-                     def server = Artifactory.newServer url:registry+"/artifactory" ,  credentialsId:"jfrog-cred"
-                     def properties = "buildid=${env.BUILD_ID},commitid=${GIT_COMMIT}";
-                     def uploadSpec = """{
-                          "files": [
-                            {
-                              "pattern": "/home/ubuntu/jenkins/workspace/taxi-booking/taxi-booking/target/(*)",
-                              "target": "taxi-libs-release-local/{1}",
-                              "flat": "false",
-                              "props" : "${properties}",
-                              "exclusions": [ "*.sha1", "*.md5"]
-                            }
-                         ]
-                     }"""
-                     def buildInfo = server.upload(uploadSpec)
-                     buildInfo.env.collect()
-                     server.publishBuildInfo(buildInfo)
-                     echo '<--------------- Jar Publish Ended --------------->'  
-             }
-        }   
-    }
-    stage(" Docker Build ") {
-      steps {
-        script {
-           echo '<--------------- Docker Build Started --------------->'
-           app = docker.build(imageName+":"+version)
-           echo '<--------------- Docker Build Ends --------------->'
-        }
-      }
-    }
-     stage (" Docker Publish "){
-        steps {
-            script {
-               echo '<--------------- Docker Publish Started --------------->'  
-                docker.withRegistry(registry, 'jfrog-cred'){
-                    app.push()
-                }    
-               echo '<--------------- Docker Publish Ended --------------->'  
+
+        stage('Terraform Destroy') {
+            when {
+                expression { params.ACTION == 'destroy' }
+            }
+            steps {
+                echo 'Terraform Destroying Infrastructure...!!!'
+                dir("${WORKDIR}") {
+                    withCredentials([file(credentialsId: 'terraform-tfvars', variable: 'TFVARS_FILE')]) {
+                        sh 'terraform destroy -var-file=$TFVARS_FILE -auto-approve'
+                    }
+                }
             }
         }
     }
-  /*  stage(" Deploy ") {
-       steps {
-         script {
-            sh './deploy.sh'
-         }
-       }
-     }
-*/
-}
 }
