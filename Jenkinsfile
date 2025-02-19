@@ -5,7 +5,7 @@ pipeline {
     tools { terraform 'terraform' }
     
     environment {
-        WORKDIR = 'eks-infra-using-pipeline'
+        WORKDIR = 'eks-infra'
         BUCKET_NAME = 'application-eks-terraform'
     }
     
