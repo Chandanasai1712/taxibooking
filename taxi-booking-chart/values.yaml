@@ -11,6 +11,7 @@ imagePullSecrets:
 
 service:
   type: LoadBalancer
-  port: 8000
+  port: 8001
+  targetPort: 8080
 
 namespace: taxi-app
